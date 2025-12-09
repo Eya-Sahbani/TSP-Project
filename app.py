@@ -3,6 +3,9 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
+import json
+import csv
+from io import StringIO
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from utils.algorithms import TSPSolver
@@ -43,6 +46,26 @@ def load_tsp_file(file_content: str):
                     pass
     
     return coords
+
+
+
+
+       
+    
+    
+
+def add_comparison_download_button(solutions: Dict, cities: List[Tuple[float, float]]):
+    """Ajoute un bouton pour télécharger le rapport de comparaison"""
+    report_data = create_comparison_report(solutions, cities)
+    st.download_button(
+        label="📊 Télécharger le Rapport de Comparaison",
+        data=report_data,
+        file_name="tsp_comparison_report.txt",
+        mime="text/plain",
+        help="Télécharger le rapport complet de comparaison",
+        use_container_width=True
+    )
+
 
 # Configuration de la page
 st.set_page_config(
@@ -153,8 +176,8 @@ class TSPApp:
             st.subheader("🔍 Algorithmes")
             self.selected_algorithms = st.multiselect(
                 "Choisir les algorithmes à comparer:",
-                ["Plus Proche Voisin", "2-Opt", "Génétique", "Recuit Simulé"],
-                default=["Plus Proche Voisin", "2-Opt"]
+                ["multi_start_nn_2opt","two_opt_improve","two_opt", "enparalle","Plus Proche Voisin"],
+                default=[ "multi_start_nn_2opt"]
             )
             
             # Paramètres avancés
@@ -196,27 +219,7 @@ class TSPApp:
             with tab3:
                 self.render_analysis_tab()
     
-    def render_welcome_screen(self):
-        """Affiche l'écran d'accueil"""
-        st.info("""
-        ## 👋 Bienvenue dans le Solveur TSP !
-        
-        **Pour commencer :**
-        1. 🏙️ **Générez des villes** (aléatoires ou françaises)
-        2. 🔍 **Sélectionnez les algorithmes** à comparer
-        3. 🚀 **Lancez la comparaison**
-        4. 📊 **Analysez les résultats**
-        
-        **Algorithmes disponibles :**
-        - 🎯 **Plus Proche Voisin** - Rapide et simple
-        - 🔄 **2-Opt** - Amélioration locale
-        - 🧬 **Génétique** - Optimisation évolutive
-        - 🔥 **Recuit Simulé** - Recherche probabiliste
-        """)
-        
-        # Graphique de démonstration
-        fig = self.create_demo_plot()
-        st.plotly_chart(fig, use_container_width=True)
+    
     
     def render_visualization_tab(self):
         """Onglet de visualisation"""
@@ -343,6 +346,7 @@ class TSPApp:
     
     def compare_algorithms(self):
         """Compare les algorithmes sélectionnés"""
+        
         if not st.session_state.cities:
             st.error("❌ Veuillez d'abord générer des villes !")
             return
@@ -365,19 +369,16 @@ class TSPApp:
                 try:
                     if algo_name == "Plus Proche Voisin":
                         distance, path = self.solver.nearest_neighbor(st.session_state.cities)
-                    elif algo_name == "2-Opt":
+                    elif algo_name == "multi_start_nn_2opt":
+                        distance, path = self.solver.multi_start_nn_2opt(st.session_state.cities)
+                    
+                    elif algo_name == "enparalle":
+                        distance, path = self.solver.parallel_tsp(
+                            st.session_state.cities)
+                    elif algo_name == "two_opt_improve": 
+                        distance, path = self.solver.two_opt_improve(st.session_state.cities)
+                    elif algo_name == "two_opt": 
                         distance, path = self.solver.two_opt(st.session_state.cities)
-                    elif algo_name == "Génétique":
-                        distance, path = self.solver.genetic_algorithm(
-                            st.session_state.cities,
-                            population_size=self.population_size,
-                            generations=self.generations
-                        )
-                    elif algo_name == "Recuit Simulé":
-                        distance, path = self.solver.simulated_annealing(
-                            st.session_state.cities,
-                            max_iterations=self.max_iterations
-                        )
                     
                     execution_time = time.time() - start_time
                     
@@ -455,7 +456,7 @@ class TSPApp:
             title=f"Problème TSP - {len(cities)} villes",
             xaxis_title="Coordonnée X",
             yaxis_title="Coordonnée Y",
-            height=500
+            height=800
         )
         
         return fig
@@ -580,7 +581,6 @@ class TSPApp:
         st.dataframe(pd.DataFrame(data), use_container_width=True)
     
     def render_solution_details(self):
-        """Affiche les détails des solutions"""
         st.subheader("📝 Détails des Solutions")
         
         for algo, result in st.session_state.solutions.items():
@@ -592,9 +592,38 @@ class TSPApp:
                     with col2:
                         st.metric("Nombre d'étapes", len(result['path']))
                     
-                    st.write("**Chemin complet:**")
-                    st.code(" → ".join(map(str, result['path'])))
+                    st.write("**Chemin complet :**", result['path'])
 
+                    # --- Bouton de téléchargement ---
+                    solution_text = (
+                        f"Algorithme : {algo}\n"
+                        f"Distance : {result['distance']:.2f}\n"
+                        f"Temps : {result['time']:.4f}s\n"
+                        "Chemin :\n" +
+                        " -> ".join(str(p) for p in result['path'])
+                    )
+
+                    st.download_button(
+                        label="📥 Télécharger la solution",
+                        data=solution_text,
+                        file_name=f"solution_{algo.replace(' ', '_')}.txt",
+                        mime="text/plain"
+                    )
+    def render_welcome_screen(self):
+        """Affiche l'écran d'accueil"""
+        st.markdown("""
+        ## 👋 Bienvenue dans le Solveur TSP Académique
+
+        Cette application vous permet de :
+        - Générer des villes (aléatoires ou françaises)
+        - Importer des fichiers TSPLIB (.tsp)
+        - Exécuter plusieurs algorithmes (2-Opt, Génétique, Recuit simulé)
+        - Comparer les performances
+        - Visualiser les chemins optimaux
+        - Analyser l'efficacité selon la taille du problème
+
+        👉 Commencez par **générer ou importer des villes** depuis la barre latérale.
+        """)
 def main():
     app = TSPApp()
     app.run()

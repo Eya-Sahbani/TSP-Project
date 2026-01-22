@@ -140,6 +140,8 @@ class TSPSolver:
                 print(f"  Départ {start_idx+1}: Erreur - {str(e)}")
         
         print(f" Meilleure distance: {best_distance:.2f}\n")
+        return best_distance, best_path
+        
     def two_opt_improve(self, path, cities, max_iterations=30):
 
         n = len(path)

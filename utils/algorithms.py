@@ -22,15 +22,15 @@ class TSPSolver:
 
         
     def calculate_distance(self, city1: Tuple[float, float], city2: Tuple[float, float]) -> float:
-        """Calcule la distance euclidienne entre deux villes"""
+        #Calcule la distance euclidienne entre deux villes
         return math.sqrt((city1[0] - city2[0])**2 + (city1[1] - city2[1])**2)
     
     def create_distance_matrix(self, cities: List[Tuple[float, float]]) -> np.ndarray:
-        """Crée la matrice des distances avec cache pour optimisation"""
+        #Crée la matrice des distances 
         cities_tuple = tuple(map(tuple, cities))
+        #Si elle existe dans la cache
         if cities_tuple in self.distance_matrix_cache:
             return self.distance_matrix_cache[cities_tuple]
-            
         n = len(cities)
         matrix = np.zeros((n, n))
         for i in range(n):
@@ -39,9 +39,9 @@ class TSPSolver:
         
         self.distance_matrix_cache[cities_tuple] = matrix
         return matrix
-    
+        #Algorithme du plus proche voisin
     def nearest_neighbor(self, cities: List[Tuple[float, float]]) -> Tuple[float, List[int]]:
-        """Algorithme du plus proche voisin optimisé"""
+         
         n = len(cities)
         if n == 0:
             return 0, []
@@ -50,12 +50,11 @@ class TSPSolver:
             return self.nearest_cache[cities_tuple]
         distance_matrix = self.create_distance_matrix(cities)
         unvisited = set(range(1, n))
-        path = [0]  # Commencer à la première ville
+        path = [0]  
         current = 0
         total_distance = 0
         
         while unvisited:
-            # Trouver la ville la plus proche
             next_city = min(unvisited, key=lambda city: distance_matrix[current][city])
             total_distance += distance_matrix[current][next_city]
             path.append(next_city)
@@ -67,66 +66,119 @@ class TSPSolver:
         path.append(0)
         self.nearest_cache[cities_tuple] = (total_distance, path)
         return total_distance, path
+        # two_opt_delta
     def two_opt_delta(self, path: List[int], distance_matrix: List[List[float]], 
                       i: int, k: int) -> float:
        
         n = len(path)
         
-        # Les 4 arêtes concernées par le swap
+        # Les 4 arêtes 
         a = path[i - 1]
         b = path[i]
         c = path[k]
         d = path[(k + 1) % n]
+        if a == c or b == d:
+            return 0
         
-        # Distance actuelle des arêtes à supprimer
         current_distance = distance_matrix[a][b] + distance_matrix[c][d]
         
         # Distance des nouvelles arêtes après le swap
         new_distance = distance_matrix[a][c] + distance_matrix[b][d]
-        
+        if new_distance >= current_distance:
+            return 0
         return new_distance - current_distance
+    
+
     
     def two_opt_swap(self, path: List[int], i: int, k: int) -> List[int]:
         """Effectue un swap 2-opt"""
+        path[i:k+1] = path[i:k+1][::-1]
+        return path
     
-        return path[:i] + path[i:k+1][::-1] + path[k+1:]
     
-    def two_opt(self, cities: List[Tuple[float, float]], max_iterations: int = 20) -> Tuple[float, List[int]]:
-        """Algorithme 2-opt avec limite d'itérations"""
+    def multi_start_nn_2opt(self, cities: List[Tuple[float, float]], 
+                        num_starts: int = 15) -> Tuple[float, List[int]]:
+        """
+        Multi-start Nearest Neighbor + 2-opt
+        Essaie plusieurs points de départ et garde le meilleur
+        """
         n = len(cities)
         if n == 0:
             return 0, []
-            
-        distance_matrix = self.create_distance_matrix(cities)
         
-        # Solution initiale avec plus proche voisin
-        current_distance, current_path = self.nearest_neighbor(cities)
+        distance_matrix = self.create_distance_matrix(cities)
+        best_distance = float('inf')
+        best_path = []
+        
+        print(f"\n Multi-start NN + 2-opt: {num_starts} départs")
+        
+        for start_idx in range(min(num_starts, n)):
+            
+            unvisited = set(range(n))
+            unvisited.remove(start_idx)
+            path = [start_idx]
+            current = start_idx
+            
+            while unvisited:
+                next_city = min(unvisited, key=lambda city: distance_matrix[current][city])
+                path.append(next_city)
+                unvisited.remove(next_city)
+                current = next_city
+            
+            # Convertir en ordre de villes pour two_opt_improve
+            cities_order = [cities[i] for i in path]
+            
+            # Améliorer avec 2-opt
+            try:
+                improved_dist, improved_cities = self.two_opt_improve2(cities_order)
+                
+                if improved_dist < best_distance:
+                    best_distance = improved_dist
+                    best_path = improved_cities
+                    print(f"  Départ {start_idx+1}: Nouveau meilleur = {best_distance:.2f}")
+            except Exception as e:
+                print(f"  Départ {start_idx+1}: Erreur - {str(e)}")
+        
+        print(f" Meilleure distance: {best_distance:.2f}\n")
+    def two_opt_improve(self, path, cities, max_iterations=30):
+
+        n = len(path)
+        current_path = path.copy()
+        distance_matrix = self.create_distance_matrix(cities)
+
+        current_distance = sum(distance_matrix[current_path[i]][current_path[i+1]]
+                            for i in range(len(current_path)-1))
+
         improved = True
         iterations = 0
-        
+
         while improved and iterations < max_iterations:
             improved = False
-            for i in range(1, n-1):
-                for k in range(i+1, n):
-                    if k - i == 1:
-                        continue
-                    
-                    new_path = self.two_opt_swap(current_path, i, k)
-                    new_distance = self.calculate_path_distance(new_path, distance_matrix)
-                    
-                    if new_distance < current_distance:
-                        current_path = new_path
-                        current_distance = new_distance
-                        improved = True
-                        break
-                if improved:
-                    break
+            best_delta = 0
+            best_i = best_k = -1
+
+            for i in range(1, n - 2):
+                for k in range(i + 1, n - 1):
+                    delta = self.two_opt_delta(current_path, distance_matrix, i, k)
+                    if delta < best_delta:
+                        best_delta = delta
+                        best_i = i
+                        best_k = k
+
+            if best_delta < -1e-6:
+                current_path = self.two_opt_swap(current_path, best_i, best_k)
+                current_distance += best_delta
+                improved = True
+
             iterations += 1
-        
+
         return current_distance, current_path
-    def two_opt_improve(self, cities: List[Tuple[float, float]]) -> Tuple[float, List[int]]:
+    
+    
+   
+    def two_opt_improve2(self, cities: List[Tuple[float, float]]) -> Tuple[float, List[int]]:
         
-        max_iterations = 20
+        max_iterations = 90
         n = len(cities)
         initial_distance, initial_path = self.nearest_neighbor(cities)
 
@@ -135,9 +187,6 @@ class TSPSolver:
 
         distance_matrix = self.create_distance_matrix(cities)
         
-        
-        # Amélioration avec 2-opt
-       
         
         
         improved = True
@@ -153,10 +202,10 @@ class TSPSolver:
             # Tester toutes les paires d'arêtes possibles
             for i in range(1, n - 1):
                 for k in range(i + 1, n):
-                    if k - i == 1:  # Skip arêtes adjacentes
+                    if k - i == 1:  
                         continue
                     
-                    # Calculer le changement de distance
+                    
                     delta = self.two_opt_delta(current_path, distance_matrix, i, k)
                     
                     # Garder la meilleure amélioration
@@ -166,7 +215,7 @@ class TSPSolver:
                         best_k = k
             
             # Appliquer la meilleure amélioration si elle existe
-            if best_delta < -1:  # Seuil d'amélioration minimum
+            if best_delta < -0.000001:  # Seuil d'amélioration minimum
                 current_path = self.two_opt_swap(current_path, best_i, best_k)
                 current_distance += best_delta
                 improved = True
@@ -175,92 +224,8 @@ class TSPSolver:
         
         return current_distance, current_path
     
-        
-       
     
-
-   
-
-    def parallel_tsp(self, cities: List[Tuple[float, float]] )-> Tuple[float, List[int]]:
-        num_threads=4
-        n = len(cities)
-        tasks = [(self, cities, i) for i in range(n)]
-        
-        best_distance = float('inf')
-        best_path = None
-        print("paralll")
-        with ProcessPoolExecutor(max_workers=num_threads) as executor:
-            print("kkkkk")
-            for dist, path in executor.map(solve_from_city, tasks):
-                print("paaaaaa")
-                if dist < best_distance:
-                    best_distance = dist
-                    best_path = path
-
-        return best_distance, best_path
     
-    def smart_multi_start(self, cities: List[Tuple[float, float]], 
-                         num_starts: int = 20,
-                         max_iterations_2opt: int = 30) -> Tuple[float, List[int], Dict]:
-        """
-        Multi-start intelligent avec échantillonnage stratégique
-        
-        Temps estimé pour 929 villes: 10-15 minutes
-        Qualité: 93-96% de l'optimal
-        """
-        n = len(cities)
-        start_time = time.time()
-        
-        print(f"Smart Multi-Start - {n} villes, {num_starts} départs")
-        print("-" * 60)
-        
-        distance_matrix = self.create_distance_matrix(cities)
-        
-        # Sélection stratégique: coins + centres + aléatoires
-        start_cities = self._select_strategic_starts(cities, num_starts)
-        
-        best_distance = float('inf')
-        best_path = []
-        
-        for idx, start_city in enumerate(start_cities):
-            # Nearest neighbor
-            nn_dist, nn_path = self.nearest_neighbor_fast(cities, distance_matrix, start_city)
-            
-            # 2-opt léger
-            opt_path = nn_path
-            opt_dist = nn_dist
-            
-            for _ in range(max_iterations_2opt):
-                improved = False
-                for i in range(1, n - 1):
-                    for k in range(i + 2, min(i + 50, n)):  # Fenêtre limitée
-                        if self._should_swap_2opt(opt_path, distance_matrix, i, k):
-                            opt_path = self._swap_2opt(opt_path, i, k)
-                            opt_dist = self.calculate_path_distance(opt_path, distance_matrix)
-                            improved = True
-                            break
-                    if improved:
-                        break
-                if not improved:
-                    break
-            
-            if opt_dist < best_distance:
-                best_distance = opt_dist
-                best_path = opt_path
-                print(f"  Départ {idx+1}/{num_starts}: Nouveau meilleur = {best_distance:.2f}")
-        
-        elapsed = time.time() - start_time
-        
-        stats = {
-            'best_distance': best_distance,
-            'num_starts': num_starts,
-            'time': elapsed
-        }
-        
-        print(f"\n✅ Meilleure distance: {best_distance:.2f}")
-        print(f"⏱️  Temps total: {elapsed:.1f}s")
-        
-        return best_distance, best_path, stats
     
     def _select_strategic_starts(self, cities: List[Tuple[float, float]], 
                                 num_starts: int) -> List[int]:
@@ -300,21 +265,6 @@ class TSPSolver:
         
         return selected[:num_starts]
     
-    def _should_swap_2opt(self, path: List[int], distance_matrix: List[List[float]], 
-                         i: int, k: int) -> bool:
-        """Vérifie si un swap 2-opt améliore la solution"""
-        n = len(path)
-        a, b = path[i-1], path[i]
-        c, d = path[k], path[(k+1) % n]
-        
-        current = distance_matrix[a][b] + distance_matrix[c][d]
-        new = distance_matrix[a][c] + distance_matrix[b][d]
-        
-        return new < current - 0.01
-    
-    def _swap_2opt(self, path: List[int], i: int, k: int) -> List[int]:
-        """Effectue un swap 2-opt"""
-        return path[:i] + path[i:k+1][::-1] + path[k+1:]
 
     def calculate_path_distance(self, path: List[int], distance_matrix: np.ndarray) -> float:
         """Calcule la distance totale d'un chemin"""
@@ -323,163 +273,151 @@ class TSPSolver:
             total += distance_matrix[path[i]][path[i+1]]
         return total
     
+
     
-    def simulated_annealing(self, cities: List[Tuple[float, float]],
-                          initial_temperature: float = 1000,
-                          cooling_rate: float = 0.995,
-                          max_iterations: int = 10000) -> Tuple[float, List[int]]:
-        """Recuit simulé pour le TSP"""
-        n = len(cities)
-        if n == 0:
-            return 0, []
-            
-        distance_matrix = self.create_distance_matrix(cities)
-        
-        # Solution initiale
-        current_solution = list(range(n)) + [0]
-        current_distance = self.calculate_path_distance(current_solution, distance_matrix)
-        
-        best_solution = current_solution[:]
-        best_distance = current_distance
-        
-        temperature = initial_temperature
-        
-        for iteration in range(max_iterations):
-            # Générer un voisin
-            i, j = random.sample(range(1, n), 2)
-            new_solution = current_solution[:]
-            new_solution[i], new_solution[j] = new_solution[j], new_solution[i]
-            new_distance = self.calculate_path_distance(new_solution, distance_matrix)
-            
-            # Critère d'acceptation
-            if new_distance < current_distance:
-                current_solution = new_solution
-                current_distance = new_distance
-                if new_distance < best_distance:
-                    best_solution = new_solution[:]
-                    best_distance = new_distance
-            else:
-                # Acceptation probabiliste
-                probability = math.exp((current_distance - new_distance) / temperature)
-                if random.random() < probability:
-                    current_solution = new_solution
-                    current_distance = new_distance
-            
-            # Refroidissement
-            temperature *= cooling_rate
-            
-            # Arrêt précoce si la température est trop basse
-            if temperature < 1e-10:
-                break
-        
-        return best_distance, best_solution
 
-    # =========================================================================
-    # MÉTHODES OPTIMISÉES AJOUTÉES
-    # =========================================================================
+    def ga_tsp(self, cities: List[Tuple[float, float]]):
 
-    def nearest_neighbor_optimized(self, cities: List[Tuple[float, float]]) -> Tuple[float, List[int]]:
-        """Plus proche voisin optimisé avec early stopping"""
+        POP = 40
+        GEN = 120
+        ELITE = 6
+        MUT_RATE = 0.25
+
         n = len(cities)
-        if n <= 1:
-            return 0, [0] if n == 1 else []
-        
-        distance_matrix = self.create_distance_matrix(cities)
-        
-        # Essayer différents points de départ
-        best_distance = float('inf')
-        best_path = []
-        
-        for start_city in range(min(5, n)):  # Tester les 5 premières villes comme départ
-            unvisited = set(range(n))
-            unvisited.remove(start_city)
-            path = [start_city]
-            current = start_city
-            total_distance = 0
+        D = self.create_distance_matrix(cities)
+
+        def random_tour():
+            p = list(range(n))
+            random.shuffle(p)
             
-            while unvisited:
-                # Trouver les k plus proches voisins
-                k_neighbors = min(10, len(unvisited))
-                candidates = sorted(unvisited, key=lambda city: distance_matrix[current][city])[:k_neighbors]
+            return p
+
+        # ---- initial population (light 2-opt)
+        population = []
+        for _ in range(POP):
+            tour = random_tour()
+            # On passe le tour à 2-opt
+            d, optimized_tour = self.two_opt_improve(tour, cities, max_iterations=3)
+            population.append((d, optimized_tour))
+
+        # ---- evolution
+        for g in range(GEN):
+            population.sort(key=lambda x: x[0])
+            new_pop = population[:ELITE]
+
+            while len(new_pop) < POP:
+                p1 = random.choice(population)[1]
+                p2 = random.choice(population)[1]
+
+                # ---- OX crossover
+                a, b = sorted(random.sample(range(1, n), 2))
+                child = [None]*n
+                p1_set = set(child[a:b])
+                child[a:b] = p1[a:b]
+                fill = [x for x in p2 if x not in p1_set]
+                j = 0
+                for i in range(n):
+                    if child[i] is None:
+                        child[i] = fill[j]
+                        j += 1
                 
-                next_city = candidates[0]
-                total_distance += distance_matrix[current][next_city]
-                path.append(next_city)
-                unvisited.remove(next_city)
-                current = next_city
-            
-            # Retour au point de départ
-            total_distance += distance_matrix[current][start_city]
-            
-            if total_distance < best_distance:
-                best_distance = total_distance
-                best_path = path + [start_city]
-        
-        return best_distance, best_path
 
-    def hybrid_algorithm(self, cities: List[Tuple[float, float]]) -> Tuple[float, List[int]]:
-        """Algorithme hybride : Génétique + 2-opt"""
+                # ---- mutation
+                if random.random() < MUT_RATE:
+                    i, k = sorted(random.sample(range(n), 2))
+                    child[i:k] = reversed(child[i:k])
+
+                # ---- local improvement
+                d, child = self.two_opt_improve(child, cities, max_iterations=6)
+                new_pop.append((d, child))
+
+            population = new_pop
+            print(f"Gen {g+1}: best = {population[0][0]:.2f}")
+         
+        best_distance, best_path = population[0]
+
+        return best_distance, best_path
+    
+
+
+    
+
+    def genetic_algorithm(self, cities: List[Tuple[float, float]], 
+                     population_size: int = 500, 
+                     generations: int = 1000,
+                     elite_size: int = 20,
+                     mutation_rate: float = 0.02) -> Tuple[float, List[int]]:
+        """
+        Algorithme génétique simple pour TSP
+        """
         n = len(cities)
         if n <= 1:
             return 0, [0] if n == 1 else []
         
-        # Étape 1: Solution initiale avec algorithme génétique
-        genetic_distance, genetic_path = self.genetic_algorithm(
-            cities, 
-            population_size=50,  # Plus petit pour la rapidité
-            generations=200
-        )
+        distance_matrix = self.create_distance_matrix(cities)
         
-        # Étape 2: Amélioration avec 2-opt
-        improved_distance, improved_path = self.two_opt(cities)
+        def create_route():
+            return random.sample(range(n), n)
         
-        # Choisir la meilleure solution
-        if genetic_distance < improved_distance:
-            return genetic_distance, genetic_path
-        else:
-            return improved_distance, improved_path
-
-   
-
-    def _create_individual(self, n: int) -> List[int]:
-        """Crée un individu pour l'algorithme génétique"""
-        individual = list(range(1, n))
-        random.shuffle(individual)
-        return [0] + individual + [0]
-
-    def _crossover(self, parent1: List[int], parent2: List[int], n: int) -> List[int]:
-        """Croisement pour l'algorithme génétique"""
-        start, end = sorted(random.sample(range(1, n), 2))
-        child = [None] * (n + 1)
-        child[0] = child[-1] = 0
-        child[start:end] = parent1[start:end]
+        def calculate_fitness(route):
+            total = sum(distance_matrix[route[i]][route[(i+1) % n]] for i in range(n))
+            return 1 / total if total > 0 else 0
         
-        pointer = 1
-        for gene in parent2[1:-1]:
-            if gene not in child:
-                while child[pointer] is not None:
-                    pointer += 1
-                child[pointer] = gene
+        def ordered_crossover(parent1, parent2):
+            child = [-1] * n
+            start, end = sorted(random.sample(range(n), 2))
+            child[start:end] = parent1[start:end]
+            parent2_filtered = [item for item in parent2 if item not in child]
+            j = 0
+            for i in range(n):
+                if child[i] == -1:
+                    child[i] = parent2_filtered[j]
+                    j += 1
+            return child
         
-        return child
-
-    def _mutate(self, individual: List[int], n: int) -> List[int]:
-        """Mutation pour l'algorithme génétique"""
-        if random.random() < 0.1:  # 10% de chance de mutation
-            i, j = random.sample(range(1, n), 2)
-            individual[i], individual[j] = individual[j], individual[i]
-        return individual
+        def mutate(route):
+            for i in range(n):
+                if random.random() < mutation_rate:
+                    j = random.randint(0, n - 1)
+                    route[i], route[j] = route[j], route[i]
+            return route
+        
+        # Population initiale
+        population = [create_route() for _ in range(population_size)]
+        
+        for gen in range(generations):
+            # Évaluation et tri
+            fitness_scores = [(i, calculate_fitness(population[i])) for i in range(population_size)]
+            fitness_scores.sort(key=lambda x: x[1], reverse=True)
+            
+            # Sélection élite
+            next_gen = [population[fitness_scores[i][0]] for i in range(elite_size)]
+            
+            # Reproduction
+            while len(next_gen) < population_size:
+                parent1 = population[fitness_scores[random.randint(0, elite_size-1)][0]]
+                parent2 = population[fitness_scores[random.randint(0, elite_size-1)][0]]
+                child = ordered_crossover(parent1, parent2)
+                child = mutate(child)
+                next_gen.append(child)
+            
+            population = next_gen
+        
+        # Meilleur individu
+        best_route = min(population, key=lambda r: sum(distance_matrix[r[i]][r[(i+1)%n]] for i in range(n)))
+        best_distance = sum(distance_matrix[best_route[i]][best_route[(i+1)%n]] for i in range(n))
+        
+        return best_distance, best_route + [best_route[0]]
 
     def compare_algorithms(self, cities: List[Tuple[float, float]]) -> Dict:
         """Compare tous les algorithmes et retourne les résultats"""
         algorithms = {
             "Plus Proche Voisin": self.nearest_neighbor,
-            "Plus Proche Voisin Optimisé": self.nearest_neighbor_optimized,
-            "2-Opt": self.two_opt,
-            "Génétique": self.genetic_algorithm,
             
-            "Recuit Simulé": self.simulated_annealing,
-            "Hybride": self.hybrid_algorithm
+            "two_opt_improve": self.two_opt_improve2,
+            "genetic": self.genetic_algorithm,
+            "multi_start_nn_2opt": self.multi_start_nn_2opt
+            
         }
         
         results = {}

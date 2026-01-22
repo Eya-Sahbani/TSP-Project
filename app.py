@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 from utils.algorithms import TSPSolver
 from utils.analysis import TSPAnalyzer
 import time
+
 from typing import Dict, List, Tuple
 def load_tsp_file(file_content: str):
     """
@@ -58,7 +59,7 @@ def add_comparison_download_button(solutions: Dict, cities: List[Tuple[float, fl
     """Ajoute un bouton pour télécharger le rapport de comparaison"""
     report_data = create_comparison_report(solutions, cities)
     st.download_button(
-        label="📊 Télécharger le Rapport de Comparaison",
+        label=" Télécharger le Rapport de Comparaison",
         data=report_data,
         file_name="tsp_comparison_report.txt",
         mime="text/plain",
@@ -70,7 +71,7 @@ def add_comparison_download_button(solutions: Dict, cities: List[Tuple[float, fl
 # Configuration de la page
 st.set_page_config(
     page_title="Solveur TSP Académique",
-    page_icon="🧠",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -135,17 +136,17 @@ class TSPApp:
         
     def render_header(self):
         """Affiche l'en-tête de l'application"""
-        st.markdown('<h1 class="main-header">🧠 Solveur TSP Académique</h1>', unsafe_allow_html=True)
-        st.markdown("### Problème du Voyageur de Commerce - Interface Interactive")
+        st.markdown('<h1 class="main-header"> Solveur TSP </h1>', unsafe_allow_html=True)
+        st.markdown(" Problème du Voyageur de Commerce - Interface Interactive")
         
     def render_sidebar(self):
         """Affiche la barre latérale avec les contrôles"""
         with st.sidebar:
-            st.header("🎮 Contrôles")
+            st.header("Menu")
             
             # Génération de villes
-            st.subheader("🏙️ Génération de Villes")
-            uploaded_file = st.file_uploader("📂 Importer un fichier TSPLIB (.tsp)", type=["tsp"])
+            st.subheader("Génération de Villes")
+            uploaded_file = st.file_uploader(" Importer un fichier TSPLIB (.tsp)", type=["tsp"])
 
             if uploaded_file is not None:
                 content = uploaded_file.read().decode("utf-8")
@@ -157,37 +158,33 @@ class TSPApp:
                     st.session_state.solutions = {}
                     st.session_state.best_algorithm = None
         
-                    st.success(f"✅ Fichier chargé : {len(cities)} villes importées !")
+                    st.success(f" Fichier chargé : {len(cities)} villes importées !")
                 else:
-                    st.error("❌ Erreur : aucune ville détectée dans ce fichier.")
+                    st.error(" Erreur : aucune ville détectée dans ce fichier.")
 
 
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("🎲 Aléatoires", use_container_width=True):
-                    self.generate_random_cities()
-            with col2:
-                if st.button("🇫🇷 Françaises", use_container_width=True):
-                    self.generate_french_cities()
+            
+            
+            if st.button(" Aléatoires", use_container_width=True):
+                self.generate_random_cities()
+           
             
             self.n_cities = st.slider("Nombre de villes", 5, 50, 15)
             
             # Algorithmes
-            st.subheader("🔍 Algorithmes")
+            st.subheader(" Algorithmes")
             self.selected_algorithms = st.multiselect(
                 "Choisir les algorithmes à comparer:",
-                ["multi_start_nn_2opt","two_opt_improve","two_opt", "enparalle","Plus Proche Voisin"],
-                default=[ "multi_start_nn_2opt"]
+                ["multi_start_nn_2opt","two_opt_improve", "Plus Proche Voisin", "genetic",],
+                default=[ "two_opt_improve"]
             )
             
             # Paramètres avancés
-            with st.expander("⚙️ Paramètres Avancés"):
-                self.population_size = st.slider("Taille population", 50, 200, 100)
-                self.generations = st.slider("Nombre de générations", 100, 1000, 500)
-                self.max_iterations = st.slider("Itérations max", 1000, 5000, 2000)
+            with st.expander(" Paramètres Avancés"):
+                self.max_iterations = st.slider("Itérations max", 20, 50, 100)
             
             # Bouton de résolution
-            if st.button("🚀 Lancer la Comparaison", type="primary", use_container_width=True):
+            if st.button(" Lancer la Comparaison", type="primary", use_container_width=True):
                 self.compare_algorithms()
             
             # Affichage des résultats rapides
@@ -197,7 +194,7 @@ class TSPApp:
     def render_quick_results(self):
         """Affiche les résultats rapides dans la sidebar"""
         st.sidebar.markdown("---")
-        st.sidebar.subheader("📊 Résultats Rapides")
+        st.sidebar.subheader(" Résultats Rapides")
         
         if st.session_state.best_algorithm:
             best_result = st.session_state.solutions[st.session_state.best_algorithm]
@@ -223,7 +220,7 @@ class TSPApp:
     
     def render_visualization_tab(self):
         """Onglet de visualisation"""
-        st.subheader("🎯 Visualisation des Solutions")
+        st.subheader(" Visualisation des Solutions")
         
         if st.session_state.solutions:
             # Sélecteur d'algorithme
@@ -243,10 +240,10 @@ class TSPApp:
     
     def render_comparison_tab(self):
         """Onglet de comparaison"""
-        st.subheader("📈 Comparaison des Algorithmes")
+        st.subheader(" Comparaison des Algorithmes")
         
         if not st.session_state.solutions:
-            st.warning("🚀 Lancez d'abord une comparaison pour voir les résultats !")
+            st.warning(" Lancez d'abord une comparaison pour voir les résultats !")
             return
         
         # Métriques comparatives
@@ -282,11 +279,11 @@ class TSPApp:
     
     def render_analysis_tab(self):
         """Onglet d'analyse"""
-        st.subheader("📊 Analyse des Performances")
+        st.subheader(" Analyse des Performances")
         
         if len(self.analyzer.results_history) == 0:
             st.info("""
-            ## 📈 Analyse Statistique
+            ##  Analyse Statistique
             
             **Effectuez plusieurs comparaisons pour débloquer :**
             - 📊 **Analyses statistiques** avancées
@@ -299,7 +296,7 @@ class TSPApp:
         
         # Rapport de performance
         report = self.analyzer.generate_performance_report()
-        st.text_area("📋 Rapport Complet", report, height=300)
+        st.text_area(" Rapport Complet", report, height=300)
         
         # Graphiques d'analyse
         col1, col2 = st.columns(2)
@@ -323,26 +320,9 @@ class TSPApp:
         st.session_state.city_names = [f"Ville_{i}" for i in range(self.n_cities)]
         st.session_state.solutions = {}
         st.session_state.best_algorithm = None
-        st.success(f"✅ {self.n_cities} villes aléatoires générées !")
+        st.success(f" {self.n_cities} villes aléatoires générées !")
         
-    def generate_french_cities(self):
-        """Génère des villes françaises"""
-        french_cities = {
-            'Paris': (48.8566, 2.3522),
-            'Lyon': (45.7640, 4.8357),
-            'Marseille': (43.2965, 5.3698),
-            'Toulouse': (43.6047, 1.4442),
-            'Bordeaux': (44.8378, -0.5792),
-            'Lille': (50.6292, 3.0573),
-            'Nice': (43.7102, 7.2620),
-            'Strasbourg': (48.5734, 7.7521)
-        }
-        
-        st.session_state.cities = list(french_cities.values())
-        st.session_state.city_names = list(french_cities.keys())
-        st.session_state.solutions = {}
-        st.session_state.best_algorithm = None
-        st.success("✅ 8 villes françaises chargées !")
+    
     
     def compare_algorithms(self):
         """Compare les algorithmes sélectionnés"""
@@ -358,8 +338,7 @@ class TSPApp:
         with st.spinner("🔍 Comparaison des algorithmes en cours..."):
             results = {}
             parameters = {
-                'population_size': self.population_size,
-                'generations': self.generations,
+                
                 'max_iterations': self.max_iterations
             }
             
@@ -372,13 +351,13 @@ class TSPApp:
                     elif algo_name == "multi_start_nn_2opt":
                         distance, path = self.solver.multi_start_nn_2opt(st.session_state.cities)
                     
-                    elif algo_name == "enparalle":
-                        distance, path = self.solver.parallel_tsp(
-                            st.session_state.cities)
+                    
                     elif algo_name == "two_opt_improve": 
-                        distance, path = self.solver.two_opt_improve(st.session_state.cities)
-                    elif algo_name == "two_opt": 
-                        distance, path = self.solver.two_opt(st.session_state.cities)
+                        distance, path = self.solver.two_opt_improve2(st.session_state.cities)
+                    
+                    elif algo_name =="genetic":
+                        distance, path = self.solver.genetic_algorithm(st.session_state.cities)
+                    
                     
                     execution_time = time.time() - start_time
                     
@@ -612,7 +591,7 @@ class TSPApp:
     def render_welcome_screen(self):
         """Affiche l'écran d'accueil"""
         st.markdown("""
-        ## 👋 Bienvenue dans le Solveur TSP Académique
+        ##  Bienvenue dans le Solveur TSP Académique
 
         Cette application vous permet de :
         - Générer des villes (aléatoires ou françaises)
@@ -622,7 +601,7 @@ class TSPApp:
         - Visualiser les chemins optimaux
         - Analyser l'efficacité selon la taille du problème
 
-        👉 Commencez par **générer ou importer des villes** depuis la barre latérale.
+        
         """)
 def main():
     app = TSPApp()
